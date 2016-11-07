@@ -22,7 +22,7 @@ apply plugin: "idea"
 defaultTasks "clean", "build"
 
 // ======== deployment options (dispatched on group name) ========
-group = "jp.classmethod.aws"
+group = "com.guidewire.cbs"
 version = "0.31-SNAPSHOT"
 
 sourceCompatibility = targetCompatibility = 1.8
