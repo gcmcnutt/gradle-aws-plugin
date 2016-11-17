@@ -1,12 +1,12 @@
 /*
- * Copyright 2013-2016 Classmethod, Inc.
- * 
+ * Copyright 2015-2016 the original author or authors.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,7 +22,6 @@ import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
-import com.amazonaws.services.lambda.model.FunctionConfiguration;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -34,6 +33,7 @@ import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.model.CreateFunctionRequest;
 import com.amazonaws.services.lambda.model.CreateFunctionResult;
 import com.amazonaws.services.lambda.model.FunctionCode;
+import com.amazonaws.services.lambda.model.FunctionConfiguration;
 import com.amazonaws.services.lambda.model.GetFunctionRequest;
 import com.amazonaws.services.lambda.model.GetFunctionResult;
 import com.amazonaws.services.lambda.model.ResourceNotFoundException;
@@ -45,7 +45,6 @@ import com.amazonaws.services.lambda.model.UpdateFunctionConfigurationResult;
 import com.amazonaws.services.lambda.model.VpcConfig;
 
 public class AWSLambdaMigrateFunctionTask extends ConventionTask {
-	
 	
 	@Getter
 	@Setter
@@ -107,8 +106,9 @@ public class AWSLambdaMigrateFunctionTask extends ConventionTask {
 		File zipFile = getZipFile();
 		S3File s3File = getS3File();
 		
-		if (functionName == null)
+		if (functionName == null) {
 			throw new GradleException("functionName is required");
+		}
 		
 		if ((zipFile == null && s3File == null) || (zipFile != null && s3File != null)) {
 			throw new GradleException("exactly one of zipFile or s3File is required");
@@ -123,7 +123,13 @@ public class AWSLambdaMigrateFunctionTask extends ConventionTask {
 		try {
 			GetFunctionResult getFunctionResult =
 					lambda.getFunction(new GetFunctionRequest().withFunctionName(functionName));
-			updateStack(lambda, getFunctionResult);
+			FunctionConfiguration config = getFunctionResult.getConfiguration();
+			if (config == null) {
+				config = new FunctionConfiguration().withRuntime(Runtime.Nodejs);
+			}
+			
+			updateFunctionCode(lambda);
+			updateFunctionConfiguration(lambda, config);
 		} catch (ResourceNotFoundException e) {
 			getLogger().warn(e.getMessage());
 			getLogger().warn("Creating function... {}", functionName);
@@ -166,11 +172,6 @@ public class AWSLambdaMigrateFunctionTask extends ConventionTask {
 		getLogger().info("Create Lambda function requested: {}", createFunctionResult.getFunctionArn());
 	}
 	
-	private void updateStack(AWSLambda lambda, GetFunctionResult getFunctionResult) throws IOException {
-		updateFunctionCode(lambda);
-		updateFunctionConfiguration(lambda, getFunctionResult);
-	}
-	
 	private void updateFunctionCode(AWSLambda lambda) throws IOException {
 		// to enable conventionMappings feature
 		File zipFile = getZipFile();
@@ -196,19 +197,52 @@ public class AWSLambdaMigrateFunctionTask extends ConventionTask {
 		getLogger().info("Update Lambda function requested: {}", updateFunctionCode.getFunctionArn());
 	}
 	
-	private void updateFunctionConfiguration(AWSLambda lambda, GetFunctionResult getFunctionResult) {
-		FunctionConfiguration config = getFunctionResult.getConfiguration() != null ?
-						getFunctionResult.getConfiguration() :
-						new FunctionConfiguration().withRuntime(Runtime.Nodejs);
+	private void updateFunctionConfiguration(AWSLambda lambda, FunctionConfiguration config) {
+		String updateFunctionName = getFunctionName();
+		if (updateFunctionName == null) {
+			updateFunctionName = config.getFunctionName();
+		}
+		
+		String updateRole = getRole();
+		if (updateRole == null) {
+			updateRole = config.getRole();
+		}
+		
+		Runtime updateRuntime = getRuntime();
+		if (updateRuntime == null) {
+			updateRuntime = Runtime.fromValue(config.getRuntime());
+		}
+		
+		String updateHandler = getHandler();
+		if (updateHandler == null) {
+			updateHandler = config.getHandler();
+		}
+		
+		String updateDescription = getFunctionDescription();
+		if (updateDescription == null) {
+			updateDescription = config.getDescription();
+		}
+		
+		Integer updateTimeout = getTimeout();
+		if (updateTimeout == null) {
+			updateTimeout = config.getTimeout();
+		}
+		
+		Integer updateMemorySize = getMemorySize();
+		if (updateMemorySize == null) {
+			updateMemorySize = config.getMemorySize();
+		}
+		
 		UpdateFunctionConfigurationRequest request = new UpdateFunctionConfigurationRequest()
-			.withFunctionName(getFunctionName() != null ? getFunctionName() : config.getFunctionName())
-			.withRole(getRole() != null ? getRole() : config.getRole())
-			.withRuntime(getRuntime() != null ? getRuntime() : Runtime.fromValue(config.getRuntime()))
-			.withHandler(getHandler() != null ? getHandler() : config.getHandler())
-			.withDescription(getFunctionDescription() != null ? getFunctionDescription() : config.getDescription())
-			.withTimeout(getTimeout() != null ? getTimeout() : config.getTimeout())
+			.withFunctionName(updateFunctionName)
+			.withRole(updateRole)
+			.withRuntime(updateRuntime)
+			.withHandler(updateHandler)
+			.withDescription(updateDescription)
+			.withTimeout(updateTimeout)
 			.withVpcConfig(getVpcConfig())
-			.withMemorySize(getMemorySize() != null ? getMemorySize() : config.getMemorySize());
+			.withMemorySize(updateMemorySize);
+		
 		UpdateFunctionConfigurationResult updateFunctionConfiguration = lambda.updateFunctionConfiguration(request);
 		getLogger().info("Update Lambda function configuration requested: {}",
 				updateFunctionConfiguration.getFunctionArn());
