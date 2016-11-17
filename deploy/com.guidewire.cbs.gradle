@@ -1,6 +1,7 @@
 apply plugin: 'maven'
 apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.bintray'
+apply plugin: 'net.researchgate.release'
 
 publishing {
 	publications {
@@ -127,4 +128,12 @@ pluginBundle {
 		artifactId = project.artifactId
 		version = project.version
 	}
+
+    release {
+        git {
+            requireBranch = 'custom-release'
+            pushToRemote = 'greg'
+        }
+        buildTasks = ['clean', 'uploadArchives']
+    }
 }
